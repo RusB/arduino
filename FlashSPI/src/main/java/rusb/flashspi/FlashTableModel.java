@@ -5,12 +5,8 @@
  */
 package rusb.flashspi;
 
-import java.io.BufferedInputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 
 /**
@@ -19,15 +15,13 @@ import javax.swing.table.DefaultTableModel;
  */
 public class FlashTableModel extends DefaultTableModel {
 
-    private static final int SECTORS = 16;
-
     public FlashTableModel() {
         init();
     }
 
     private void init() {
-        addColumn("Block");
-        for (int i = 0; i < SECTORS; ++i) {
+        addColumn("Sector");
+        for (int i = 0; i < ArduinoSpiEeprom.numSectors; ++i) {
             addColumn(String.format("#%02d", i));
         }
     }
@@ -38,37 +32,20 @@ public class FlashTableModel extends DefaultTableModel {
         }
 
         for (int i = 0; i < n; i++) {
-            Object[] rowData = new Object[1 + SECTORS];
+            Object[] rowData = new Object[1 + ArduinoSpiEeprom.numSectors];
             Arrays.fill(rowData, SectorData.UNKNOWN);
-            rowData[0] = String.format("#%02d", i);
+            rowData[0] = String.format("Block #%02d", i);
             addRow(rowData);
         }
     }
 
-    void load(Path path) {
-        try (BufferedInputStream bis = new BufferedInputStream(Files.newInputStream(path), 32 * 1024)) {
-            int r = 0, c = 0;
-            do {
-                byte[] bs = new byte[4 * 1024];
-                int len = bis.read(bs);
-                if (len <= 0) {
-                    break;
-                }
-
-                setValueAt(new SectorData(bs, len), r, 1 + c);
-
-                if (++c >= SECTORS) {
-                    c = 0;
-                    ++r;
-                }
-            } while (true);
-        } catch (Exception ex) {
-            Logger.getLogger(FlashTableModel.class.getName()).log(Level.SEVERE, null, ex);
-        }
+    public SectorData getSectorData(int block, int sector) {
+        Object obj = getValueAt(block, 1 + sector);
+        return (SectorData) obj;
     }
 
-    void save(Path toPath) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    public void setSectorData(int block, int sector, SectorData data) {
+        SwingUtilities.invokeLater(() -> setValueAt(data, block, 1 + sector));
     }
 
 }

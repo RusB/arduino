@@ -1,48 +1,47 @@
 package rusb.flashspi;
 
-import java.util.Objects;
-
 /**
  *
  * @author bryhljaev
  */
 public class SectorData {
 
-    static final SectorData UNKNOWN = new SectorData();
+    static final SectorData UNKNOWN = new SectorData(new byte[0]) {
+        @Override
+        public String toString() {
+            return ".";
+        }
+    };
 
     private final byte[] bs;
-    private final int len;
 
-    private boolean isEmpty = true;
+    private final boolean isEmpty;
 
-    private SectorData() {
-        bs = null;
-        len = 0;
+    public SectorData(byte[] bs) {
+        this.bs = bs;
+        this.isEmpty = check(bs);
     }
 
-    public SectorData(byte[] bs, int len) {
-        this.bs = bs;
-        this.len = len;
-
+    private boolean check(byte[] bs) {
         for (byte b : bs) {
-            if ((b & 0xFF) != 0xFF) {
-                isEmpty = false;
-                break;
+            if (b != -1) {
+                return false;
             }
         }
+        return true;
     }
 
     @Override
     public String toString() {
-        if (len == 0 || Objects.isNull(bs)) {
-            return "";
-        }
+        return isEmpty ? "=" : "#";
+    }
 
-        if (len != 4 * 1024) {
-            return String.valueOf(len);
-        }
+    public byte[] getBytes() {
+        return bs;
+    }
 
-        return isEmpty ? "." : "#";
+    public boolean isEmpty() {
+        return isEmpty;
     }
 
 }
