@@ -4,9 +4,9 @@ import gnu.io.CommPortIdentifier;
 import gnu.io.PortInUseException;
 import gnu.io.RXTXPort;
 import gnu.io.UnsupportedCommOperationException;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -18,10 +18,8 @@ public class ArduinoCommPort implements AutoCloseable {
     private final CommPortIdentifier commPortIdentifier;
 
     private RXTXPort port;
-    private BufferedInputStream inp;
-    private BufferedOutputStream out;
 
-    ArduinoCommPort(CommPortIdentifier commPortIdentifier) {
+    public ArduinoCommPort(CommPortIdentifier commPortIdentifier) {
         this.commPortIdentifier = commPortIdentifier;
     }
 
@@ -29,55 +27,49 @@ public class ArduinoCommPort implements AutoCloseable {
         return commPortIdentifier.getName();
     }
 
-    void open() throws IOException {
+    public void open() throws IOException {
         try {
             port = commPortIdentifier.open(getClass().getSimpleName(), 0);
             //port.setEndOfInputChar((byte) '\n');
             port.setSerialPortParams(115200, RXTXPort.DATABITS_8, RXTXPort.STOPBITS_1, RXTXPort.PARITY_NONE);
-
-            inp = new BufferedInputStream(port.getInputStream());
-            out = new BufferedOutputStream(port.getOutputStream());
         } catch (PortInUseException | UnsupportedCommOperationException ex) {
             throw new IOException("Открытие " + commPortIdentifier.getName(), ex);
         }
     }
 
     @Override
-    public void close() throws IOException {
-        try {
-            out.close();
-            inp.close();
-        } finally {
-            port.close();
-        }
+    public void close() {
+        port.close();
     }
 
     public String readLine() throws IOException {
-        StringBuilder line = new StringBuilder();
-        int ch;
-        while ((ch = inp.read()) != -1) {
-            if (ch != '\n') {
-                if (ch != '\r') {
+        InputStream inp = port.getInputStream();
+        StringBuilder line = new StringBuilder(80);
+
+        do {
+            int ch = inp.read();
+            switch (ch) {
+                case -1:
+                    break;
+                case '\n':
+                    return line.toString();
+                case '\r':
+                    break;
+                default:
                     line.append((char) ch);
-                }
-            } else {
-                break;
             }
-        }
-//        System.out.print(" >");
-//        System.out.println(line);
-        return line.toString();
+        } while (true);
     }
 
     public void writeLine(String text) throws IOException {
+        OutputStream out = port.getOutputStream();
         out.write(text.getBytes(StandardCharsets.US_ASCII));
         out.write('\n');
         out.flush();
     }
 
-    public int readBlock(int addr, byte[] bs) throws IOException {
-        writeLine("r" + String.valueOf(addr));
-
+    public int readBlock(byte[] bs) throws IOException {
+        InputStream inp = port.getInputStream();
         for (int i = 0; i < bs.length; i++) {
             int ch = inp.read();
             bs[i] = (byte) ch;
@@ -86,8 +78,8 @@ public class ArduinoCommPort implements AutoCloseable {
         return bs.length;
     }
 
-    public void writeBlock(int addr, byte[] bs) throws IOException {
-        writeLine("w" + String.valueOf(addr));
+    public void writeBlock(byte[] bs) throws IOException {
+        OutputStream out = port.getOutputStream();
         out.write(bs);
         out.flush();
     }

@@ -1,14 +1,20 @@
-#include "Arduino.h"
 #include <SPIFlash.h>
 #include <SPI.h>
 #include <avr/wdt.h>
 
 enum _consts
 {
-  fastRead = false, errorCheck = true
+  flashChipSize = MB(4), fastRead = false, errorCheck = true
 };
 
-uint8_t buf1k[KB(1)];
+enum mode_t
+{
+  MODE_NONE, MODE_COMMAND, MODE_DATA
+};
+
+mode_t mode;
+
+uint8_t data[KB(1)];
 
 SPIFlash flash;
 
@@ -16,12 +22,16 @@ void
 setup ()
 {
   Serial.begin (115200);
+
+  memset (data, 0, sizeof(data));
+  mode = MODE_COMMAND;
+
 #if defined (ARDUINO_SAMD_ZERO) || (__AVR_ATmega32U4__)
   while (!Serial)
   ; // Wait for Serial monitor to open
 #endif
 
-  if (flash.begin ())
+  if (flash.begin (flashChipSize))
     {
       Serial.println (F("Init OK!"));
     }
@@ -31,7 +41,42 @@ setup ()
     }
 }
 
-bool
+void
+printResult (bool result)
+{
+  if (result)
+    {
+      Serial.println (F("OK"));
+    }
+  else
+    {
+      Serial.print (F("FAIL"));
+      Serial.print (' ');
+      flash.error (true);
+    }
+}
+
+void
+printResult (bool result, uint32_t addr)
+{
+  if (result)
+    {
+      Serial.print (F("OK"));
+      Serial.print (F(" 0x"));
+      Serial.print (addr, HEX);
+      Serial.println ();
+    }
+  else
+    {
+      Serial.print (F("FAIL"));
+      Serial.print (F(" 0x"));
+      Serial.print (addr, HEX);
+      Serial.print (' ');
+      flash.error (true);
+    }
+}
+
+void
 printInfo ()
 {
   uint64_t uid = flash.getUniqueID ();
@@ -62,148 +107,111 @@ printInfo ()
   Serial.print (flash.getCapacity (), HEX);
   Serial.println ();
 
-  return true;
+  printResult (true);
 }
 
 void
-printResult (bool result)
+eraseSector (uint32_t addr)
 {
-  Serial.print (result ? F("OK") : F("FAIL"));
-  Serial.println ();
+  bool result = flash.eraseSector (addr);
+  printResult (result, addr);
 }
 
 void
-printResult (bool result, uint32_t addr)
+readBuffer (uint32_t addr)
 {
-  Serial.print (result ? F("OK") : F("FAIL"));
-  Serial.print (F(" 0x"));
-  Serial.print (addr, HEX);
-  Serial.println ();
+  bool result = flash.readByteArray (addr, data, sizeof(data), fastRead);
+
+  Serial.write (data, sizeof(data));
+
+  printResult (result, addr);
 }
 
-uint32_t
-getInt (const String& cmd)
+void
+readData ()
 {
-  String s = cmd.substring (1);
-  s.trim ();
-  return s.toInt ();
+  for (uint16_t idx = 0; idx < sizeof(data); ++idx)
+    {
+      while (!Serial.available ())
+        wdt_reset();
+      data[idx] = Serial.read ();
+    }
+}
+
+void
+writeBuffer (uint32_t addr)
+{
+  readData ();
+
+  bool result = flash.writeByteArray (addr, data, sizeof(data), errorCheck);
+
+  printResult (result, addr);
 }
 
 void
 loop ()
 {
+  wdt_reset();
+
   if (!Serial.available ())
     return;
 
-  String cmd = Serial.readString ();
+  char cmd = Serial.read ();
 
-  uint32_t addr;
-  bool result;
+  String addr = Serial.readString ();
+  addr.trim ();
 
-  switch (cmd[0])
+  switch (cmd)
     {
     case 'i':
-      result = printInfo ();
-      printResult (result);
+      printInfo ();
       return;
 
     case 'a':
-      result = flash.eraseChip ();
-      printResult (result);
+      printResult (flash.eraseChip ());
       return;
 
     case 'e':
-      addr = getInt (cmd);
-
-      result = flash.eraseSector (addr);
-      printResult (result, addr);
+      eraseSector (addr.toInt ());
       return;
 
     case 'w':
-      addr = getInt (cmd);
+      writeBuffer (addr.toInt ());
+      return;
 
-      for (uint16_t idx = 0; idx < sizeof(buf1k); ++idx)
-        buf1k[idx] = Serial.read ();
-
-      for (uint16_t offset = 0; offset < 1024; offset += 256)
-        {
-          addr += offset;
-          result = flash.writeByteArray (addr, buf1k + offset, 256, errorCheck);
-          if (!result)
-            break;
-        }
-
-      printResult (result, result ? (addr - 1024) : addr);
+    case 'W':
+      readData ();
+      printResult (true);
       return;
 
     case 'r':
-      addr = getInt (cmd);
-
-      memset (buf1k, 0, sizeof(buf1k));
-
-      for (uint16_t offset = 0; offset < 1024; offset += 256)
-        {
-          addr += offset;
-          result = flash.readByteArray (addr, buf1k + offset, 256, fastRead);
-          if (!result)
-            break;
-        }
-
-      Serial.write (buf1k, sizeof(buf1k));
-
-      Serial.println ();
-
-      printResult (result, result ? (addr - 1024) : addr);
+      readBuffer (addr.toInt ());
       return;
+
+    case 'F':
+      for (uint32_t idx = 0; idx < sizeof(data); ++idx)
+        {
+          data[idx] = (uint8_t) (idx + 1);
+        }
+        /* no break */
 
     case 'R':
-      addr = getInt (cmd);
-
-      memset (buf1k, 0, sizeof(buf1k));
-
-      for (uint16_t offset = 0; offset < 1024; offset += 256)
-        {
-          addr += offset;
-          result = flash.readByteArray (addr, buf1k + offset, 256, fastRead);
-          if (!result)
-            break;
-        }
-
-      for (uint16_t idx = 0; idx < sizeof(buf1k); ++idx)
-        {
-          if (buf1k[idx] < 0x10)
-            Serial.print ('0');
-          Serial.print (buf1k[idx], HEX);
-
-          if ((idx & 0x1F) == 0x1F)
-            Serial.println ();
-          else
-            {
-              if ((idx & 0x0F) == 0x0F)
-                Serial.print (' ');
-              Serial.print (' ');
-            }
-        }
-
-      Serial.println ();
-
-      printResult (result, result ? (addr - 1024) : addr);
+      Serial.write (data, sizeof(data));
+      printResult (true);
       return;
 
-    case 'b':
-      addr = getInt (cmd);
-
-      Serial.print (F("[0x"));
-      Serial.print (addr, HEX);
-      Serial.print (F("] = 0x"));
-      Serial.println (flash.readByte (addr, fastRead), HEX);
-      Serial.print (F("OK"));
-      Serial.println ();
+    case '?':
+      Serial.println (F("OK // SPI EEPROM FLASHER"));
       return;
 
     default:
-      Serial.println (F("OK SPI EEPROM"));
-      return;
+      Serial.print (F("Unknown command: "));
+      Serial.print (cmd);
+      Serial.print (' ');
+      Serial.print (addr);
+      Serial.println ();
+
+      Serial.println (F("OK // SPI EEPROM FLASHER"));
     }
 
 }
