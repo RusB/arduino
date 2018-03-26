@@ -3,11 +3,14 @@ package rusb.arduino;
 import gnu.io.CommPortIdentifier;
 import gnu.io.PortInUseException;
 import gnu.io.RXTXPort;
+import gnu.io.SerialPort;
 import gnu.io.UnsupportedCommOperationException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -43,6 +46,8 @@ public class ArduinoCommPort implements AutoCloseable {
     }
 
     public String readLine() throws IOException {
+        port.enableReceiveTimeout(1000);
+
         InputStream inp = port.getInputStream();
         StringBuilder line = new StringBuilder(80);
 
@@ -50,11 +55,12 @@ public class ArduinoCommPort implements AutoCloseable {
             int ch = inp.read();
             switch (ch) {
                 case -1:
-                    break;
-                case '\n':
-                    return line.toString();
                 case '\r':
                     break;
+
+                case '\n':
+                    return line.toString();
+
                 default:
                     line.append((char) ch);
             }
@@ -69,8 +75,10 @@ public class ArduinoCommPort implements AutoCloseable {
     }
 
     public int readBlock(byte[] bs) throws IOException {
+        port.disableReceiveTimeout();
+
         InputStream inp = port.getInputStream();
-        for (int i = 0; i < bs.length; i++) {
+        for (int i = 0; i < bs.length; ++i) {
             int ch = inp.read();
             bs[i] = (byte) ch;
         }
@@ -79,9 +87,26 @@ public class ArduinoCommPort implements AutoCloseable {
     }
 
     public void writeBlock(byte[] bs) throws IOException {
+        port.enableReceiveTimeout(1000);
+
+        InputStream inp = port.getInputStream();
         OutputStream out = port.getOutputStream();
-        out.write(bs);
-        out.flush();
+
+        int off = 0, len = 32;
+        do {
+            int ch;
+            do {
+                ch = inp.read();
+            } while (ch != '+');
+
+            out.write(bs, off, len);
+            out.flush();
+
+            off += len;
+            if (off + len > bs.length) {
+                len = bs.length - off;
+            }
+        } while (off < bs.length);
     }
 
 }

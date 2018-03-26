@@ -127,8 +127,30 @@ readBuffer (uint32_t addr)
   printResult (result, addr);
 }
 
-void
+uint16_t
 readData ()
+{
+  uint16_t idx = 0, len = sizeof(data), read;
+
+  do
+    {
+      if ((idx % 32) == 0)
+	{
+	  Serial.print('+');
+	}
+
+      read = Serial.readBytes (data + idx, len);
+
+      idx += read;
+      len -= read;
+    }
+  while (len > 0);
+
+  return idx;
+}
+
+void
+readDataA ()
 {
   for (uint16_t idx = 0; idx < sizeof(data); ++idx)
     {
@@ -180,8 +202,7 @@ loop ()
       return;
 
     case 'W':
-      readData ();
-      printResult (true);
+      printResult (true, readData ());
       return;
 
     case 'r':

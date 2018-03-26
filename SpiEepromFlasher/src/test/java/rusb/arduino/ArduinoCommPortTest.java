@@ -113,27 +113,26 @@ public class ArduinoCommPortTest {
         }
     }
 
-    @Test(timeout = 10000)
+    @Test(timeout = 60000)
     public void testWriteBlock() throws IOException {
         System.out.println("writeBlock");
 
         byte[] bs = new byte[1024];
-        for (int i = 0; i < bs.length; ++i) {
-            bs[i] = (byte) (i + 1);
-        }
 
-        fail("The test case is a prototype.");
+        for (int i = 0; i < bs.length; ++i) {
+            bs[i] = (byte) -(i + 1);
+        }
 
         commPort.writeLine("W");
         commPort.writeBlock(bs);
-        assertEquals("OK", commPort.readLine());
+        assertEquals("OK 0x400", commPort.readLine());
 
         commPort.writeLine("R");
         commPort.readBlock(bs);
         assertEquals("OK", commPort.readLine());
 
         for (int i = 0; i < bs.length; i++) {
-            long expected = 0xFF & (i + 1);
+            long expected = 0xFF & -(i + 1);
             long actual = 0xFF & bs[i];
             assertEquals(
                     String.format("Ошибка в элемнте %d: %d != %d", i, expected, actual),
