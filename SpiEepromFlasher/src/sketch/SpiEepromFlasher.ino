@@ -4,16 +4,11 @@
 
 enum _consts
 {
-  flashChipSize = MB(4), fastRead = false, errorCheck = true
+  flashChipSize = MB(4)
 };
 
-enum mode_t
-{
-  MODE_NONE, MODE_COMMAND, MODE_DATA
-};
-
-mode_t mode;
-
+bool fastRead;
+bool errorCheck;
 uint8_t data[KB(1)];
 
 SPIFlash flash;
@@ -23,8 +18,9 @@ setup ()
 {
   Serial.begin (115200);
 
+  fastRead = false;
+  errorCheck = true;
   memset (data, 0, sizeof(data));
-  mode = MODE_COMMAND;
 
 #if defined (ARDUINO_SAMD_ZERO) || (__AVR_ATmega32U4__)
   while (!Serial)
@@ -135,9 +131,10 @@ readData ()
   do
     {
       if ((idx % 32) == 0)
-	{
-	  Serial.print('+');
-	}
+        {
+          Serial.print ('+');
+          Serial.flush ();
+        }
 
       read = Serial.readBytes (data + idx, len);
 
@@ -150,17 +147,6 @@ readData ()
 }
 
 void
-readDataA ()
-{
-  for (uint16_t idx = 0; idx < sizeof(data); ++idx)
-    {
-      while (!Serial.available ())
-        wdt_reset();
-      data[idx] = Serial.read ();
-    }
-}
-
-void
 writeBuffer (uint32_t addr)
 {
   readData ();
@@ -168,6 +154,30 @@ writeBuffer (uint32_t addr)
   bool result = flash.writeByteArray (addr, data, sizeof(data), errorCheck);
 
   printResult (result, addr);
+}
+
+void
+printBuffer ()
+{
+  for (uint16_t idx = 0; idx < sizeof(data); ++idx)
+    {
+      if (data[idx] < 0x10)
+        Serial.print ('0');
+      Serial.print (data[idx], HEX);
+
+      if ((idx & 0x1F) == 0x1F)
+        Serial.println ();
+      else
+        {
+          if ((idx & 0x0F) == 0x0F)
+            Serial.print (' ');
+          Serial.print (' ');
+        }
+    }
+
+  Serial.println ();
+
+  printResult (true);
 }
 
 void
@@ -197,6 +207,10 @@ loop ()
       eraseSector (addr.toInt ());
       return;
 
+    case 'P':
+      printBuffer ();
+      return;
+
     case 'w':
       writeBuffer (addr.toInt ());
       return;
@@ -214,7 +228,7 @@ loop ()
         {
           data[idx] = (uint8_t) (idx + 1);
         }
-        /* no break */
+      /* no break */
 
     case 'R':
       Serial.write (data, sizeof(data));

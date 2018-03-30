@@ -288,15 +288,21 @@ public class MainJFrame extends javax.swing.JFrame {
 
     private void jButtonFlashTestActionPerformed(ActionEvent evt) {//GEN-FIRST:event_jButtonFlashTestActionPerformed
         CommPortIdentifier cpi = getCommPortIdentifier();
-        new ArduinoSpiEeprom(cpi)
-                .flashInfo(this);
+        executorService.execute(() -> {
+            isStop = false;
+            new ArduinoSpiEeprom(cpi)
+                    .flashInfo(this);
+        });
     }//GEN-LAST:event_jButtonFlashTestActionPerformed
 
     private void jButtonFlashVerifyActionPerformed(ActionEvent evt) {//GEN-FIRST:event_jButtonFlashVerifyActionPerformed
         CommPortIdentifier cpi = getCommPortIdentifier();
-        isStop = false;
-        new ArduinoSpiEeprom(cpi)
-                .flashVerify(this, tableModel);
+        executorService.execute(() -> {
+            isStop = false;
+            isStop = false;
+            new ArduinoSpiEeprom(cpi)
+                    .flashVerify(this, tableModel);
+        });
     }//GEN-LAST:event_jButtonFlashVerifyActionPerformed
 
     private void jButtonFlashStopActionPerformed(ActionEvent evt) {//GEN-FIRST:event_jButtonFlashStopActionPerformed

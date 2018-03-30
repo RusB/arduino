@@ -83,17 +83,16 @@ public class ArduinoSpiEeprom {
 
                     int addr = count * 4 * 1024;
 
-                    for (int i = 0; i < 16; i++) {
+                    for (int i = 0; i < 4; i++) {
                         if (parent.isStop()) {
                             break blocks;
                         }
 
-                        byte[] buf = new byte[256];
+                        byte[] buf = new byte[1024];
 
                         parent.setInfo("Считывание сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
                         cp.writeLine("r" + String.valueOf(addr + i * buf.length));
                         cp.readBlock(buf);
-                        cp.readLine();
 
                         String line = cp.readLine();
                         if (line.startsWith("FAIL")) {
@@ -141,15 +140,15 @@ public class ArduinoSpiEeprom {
                     if (sd.isEmpty()) {
                         //cp.writeLine("e" + String.valueOf(addr));
                     } else {
-                        for (int n = 0; n < 16; ++n) {
-                            int from = n * 256;
+                        for (int n = 0; n < 4; ++n) {
+                            int from = n * 1024;
 
                             parent.setInfo("Запись сектора:" + b + ":" + s + ":" + (addr + from));
                             if (parent.isStop()) {
                                 break blocks;
                             }
 
-                            byte[] bs = Arrays.copyOfRange(sd.getBytes(), from, from + 256);
+                            byte[] bs = Arrays.copyOfRange(sd.getBytes(), from, from + 1024);
                             cp.writeLine("w" + String.valueOf(addr + from));
                             cp.writeBlock(bs);
 
@@ -189,42 +188,48 @@ public class ArduinoSpiEeprom {
             blocks:
             for (int b = 0; b < numBlocks; ++b) {
                 for (int s = 0; s < numSectors; ++s) {
-                    ByteArrayOutputStream bs = new ByteArrayOutputStream(4 * 1024);
+                    SectorData sd = tableModel.getSectorData(b, s);
 
-                    int addr = count * 4 * 1024;
+                    if (sd.isEmpty()) { 
+                    } else {
+                        ByteArrayOutputStream bs = new ByteArrayOutputStream(4 * 1024);
 
-                    for (int i = 0; i < 16; i++) {
-                        if (parent.isStop()) {
-                            break blocks;
+                        int addr = count * 4 * 1024;
+
+                        for (int i = 0; i < 4; i++) {
+                            if (parent.isStop()) {
+                                break blocks;
+                            }
+
+                            byte[] buf = new byte[1024];
+
+                            parent.setInfo("Считывание сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
+                            cp.writeLine("r" + String.valueOf(addr + i * buf.length));
+                            cp.readBlock(buf);
+
+                            String line = cp.readLine();
+                            if (line.startsWith("FAIL")) {
+                                List<String> lines = new ArrayList<>();
+                                lines.add(line);
+                                lines.add("Ошибка при считывании сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
+                                lines.add("Считано секторов " + count);
+                                String message = String.join(System.lineSeparator(), lines);
+                                showMessageError(parent, message, "Ошибка!");
+                                return;
+                            }
+
+                            bs.write(buf);
                         }
 
-                        byte[] buf = new byte[256];
-
-                        parent.setInfo("Считывание сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
-                        cp.writeLine("r" + String.valueOf(addr + i * buf.length));
-                        cp.readBlock(buf);
-                        cp.readLine();
-
-                        String line = cp.readLine();
-                        if (line.startsWith("FAIL")) {
-                            List<String> lines = new ArrayList<>();
-                            lines.add(line);
-                            lines.add("Ошибка при считывании сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
-                            lines.add("Считано секторов " + count);
-                            String message = String.join(System.lineSeparator(), lines);
+                        byte[] mbs = sd.getBytes();
+                        if (!Arrays.equals(bs.toByteArray(), mbs)) {
+                            String message = "Ошибка при сравнении сектора:" + b + ":" + s;
                             showMessageError(parent, message, "Ошибка!");
                             return;
                         }
-
-                        bs.write(buf);
                     }
 
-                    byte[] mbs = tableModel.getSectorData(b, s).getBytes();
-                    if (!Arrays.equals(bs.toByteArray(), mbs)) {
-                        String message = "Ошибка при сравнении сектора:" + b + ":" + s;
-                        showMessageError(parent, message, "Ошибка!");
-                        return;
-                    }
+                    ++count;
                 }
             }
             LocalTime stop = LocalTime.now();
