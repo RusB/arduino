@@ -44,7 +44,7 @@ public class ArduinoSpiEeprom {
         return commPort;
     }
 
-    void flashErase(MainJFrame parent, FlashTableModel tm) {
+    void flashEraseAll(MainJFrame parent, FlashTableModel tm) {
         try (ArduinoCommPort cp = openCommPort()) {
             parent.setInfo("Полная очистка ИС...");
             cp.writeLine("a");
@@ -71,6 +71,31 @@ public class ArduinoSpiEeprom {
         }
     }
 
+    void flashEraseSector(MainJFrame parent, FlashTableModel tm, int block, int sector) {
+        try (ArduinoCommPort cp = openCommPort()) {
+            parent.setInfo("Очистка сектора...");
+
+            int addr = (block * numSectors + sector) * 4 * 1024;
+            cp.writeLine("e" + addr);
+
+            String line = cp.readLine();
+            if (line.startsWith("FAIL")) {
+                List<String> lines = new ArrayList<>();
+                lines.add(line);
+                lines.add("Ошибка при очистке сектора.");
+                String message = String.join(System.lineSeparator(), lines);
+                showMessageError(parent, message, "Очистка сектора");
+            } else {
+                tm.setSectorData(block, sector, SectorData.UNKNOWN);
+                String message = "Сектор очищен.";
+                showMessageInfo(parent, message, "Очистка сектора");
+                parent.setInfo("");
+            }
+        } catch (Exception ex) {
+            Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
     void flashRead(MainJFrame parent, FlashTableModel tableModel) {
         try (ArduinoCommPort cp = openCommPort()) {
             int count = 0;
@@ -81,7 +106,7 @@ public class ArduinoSpiEeprom {
                 for (int s = 0; s < numSectors; ++s) {
                     ByteArrayOutputStream bs = new ByteArrayOutputStream(4 * 1024);
 
-                    int addr = count * 4 * 1024;
+                    int addr = (b * numSectors + s) * 4 * 1024;
 
                     for (int i = 0; i < 4; i++) {
                         if (parent.isStop()) {
@@ -125,20 +150,22 @@ public class ArduinoSpiEeprom {
         }
     }
 
-    void flashWrite(MainJFrame parent, FlashTableModel tableModel) {
+    void flashWrite(MainJFrame parent, FlashTableModel tableModel, int block, int sector) {
         try (ArduinoCommPort cp = openCommPort()) {
             int count = 0;
 
+            int sb = block, ss = sector;
+
             LocalTime start = LocalTime.now();
             blocks:
-            for (int b = 0; b < numBlocks; ++b) {
-                for (int s = 0; s < numSectors; ++s) {
-                    int addr = count * 4 * 1024;
-
+            for (int b = sb; b < numBlocks; ++b) {
+                for (int s = ss; s < numSectors; ++s) {
                     SectorData sd = tableModel.getSectorData(b, s);
 
+                    int addr = (numSectors * b + s) * 4 * 1024;
+
                     if (sd.isEmpty()) {
-                        //cp.writeLine("e" + String.valueOf(addr));
+                        cp.writeLine("e" + String.valueOf(addr));
                     } else {
                         for (int n = 0; n < 4; ++n) {
                             int from = n * 1024;
@@ -167,6 +194,7 @@ public class ArduinoSpiEeprom {
 
                     ++count;
                 }
+                ss = 0;
             }
             LocalTime stop = LocalTime.now();
 
@@ -190,11 +218,11 @@ public class ArduinoSpiEeprom {
                 for (int s = 0; s < numSectors; ++s) {
                     SectorData sd = tableModel.getSectorData(b, s);
 
-                    if (sd.isEmpty()) { 
+                    if (sd.isEmpty()) {
                     } else {
                         ByteArrayOutputStream bs = new ByteArrayOutputStream(4 * 1024);
 
-                        int addr = count * 4 * 1024;
+                        int addr = (b * numSectors + s) * 4 * 1024;
 
                         for (int i = 0; i < 4; i++) {
                             if (parent.isStop()) {
@@ -203,7 +231,7 @@ public class ArduinoSpiEeprom {
 
                             byte[] buf = new byte[1024];
 
-                            parent.setInfo("Считывание сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
+                            parent.setInfo("Сравнение сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
                             cp.writeLine("r" + String.valueOf(addr + i * buf.length));
                             cp.readBlock(buf);
 
@@ -211,8 +239,8 @@ public class ArduinoSpiEeprom {
                             if (line.startsWith("FAIL")) {
                                 List<String> lines = new ArrayList<>();
                                 lines.add(line);
-                                lines.add("Ошибка при считывании сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
-                                lines.add("Считано секторов " + count);
+                                lines.add("Ошибка при сравнении сектора:" + b + ":" + s + ":" + (addr + i * buf.length));
+                                lines.add("Проверено секторов " + count);
                                 String message = String.join(System.lineSeparator(), lines);
                                 showMessageError(parent, message, "Ошибка!");
                                 return;
